@@ -975,44 +975,111 @@ docker exec toy-jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 - **Docker Pipeline**
 - **Pipeline**
 
-### 12-5. GitHub → Jenkins 연동을 위한 Personal Access Token 만들기 (선택)
+### 12-5. GitHub Personal Access Token (PAT) 발급
 
-GitHub Webhook 및 API 접근을 쓰려면:
+Jenkins가 GitHub 저장소를 **HTTPS로 클론**하거나 **API 호출**할 때 사용할 인증 토큰을 만듭니다.
+
 1. GitHub 우측 상단 프로필 → **Settings**
 2. 좌측 가장 아래 **Developer settings**
 3. **Personal access tokens** → **Tokens (classic)** → **Generate new token (classic)**
 4. **Note**: `jenkins`
 5. **Expiration**: 원하는 기간 (예: `90 days`)
 6. **Scopes**:
-   - ✅ `repo` (전체)
-   - ✅ `admin:repo_hook` (webhook 관리용)
-7. **Generate token** → 토큰 복사 (한 번만 보임!) → 안전한 곳에 저장
+   - ✅ `repo` (전체) — 저장소 클론/접근용
+   - ✅ `admin:repo_hook` (선택) — webhook 관리용
+7. **Generate token** 클릭
 
-### 12-6. Jenkinsfile 작성
+> 🚨 **토큰은 발급 직후 한 번만 표시됩니다. 절대 한 번에 화면을 닫지 마세요!**
+> 다음 중 한 곳에 즉시 저장:
+> - ⭐ **비밀번호 관리자** (1Password, Bitwarden, Apple Keychain 등) — 가장 안전
+> - 메모장에 임시 복사 → 12-6 등록 후 삭제
+> - 본인만 접근 가능한 로컬 파일 (`~/secrets.txt` 등)
+>
+> **절대 git에 올라가는 위치에 두면 안 됩니다.** 잃어버리면 GitHub에서 새 토큰을 발급받아야 하고(기존 토큰은 못 봄), Jenkins 등록도 다시 해야 합니다.
 
-프로젝트 루트에 파이프라인 정의 파일 만들기:
+- [ ] PAT 발급 및 안전한 곳에 저장 완료
+
+### 12-6. Jenkins Credentials Store에 토큰 등록
+
+> 💡 **왜 Credentials Store?** Jenkins가 비밀을 자동 암호화 저장 + 로그 마스킹까지 해줍니다. 절대 git이나 코드에 토큰을 직접 넣지 마세요.
+
+이 가이드는 **HTTPS 방식으로 GitHub 저장소를 클론**합니다. (SSH 방식은 Jenkins 컨테이너 내부 SSH 키 세팅이 복잡하고 `Host key verification failed` 에러가 잘 납니다.)
+
+#### 등록 절차
+
+1. Jenkins → **Manage Jenkins** 클릭
+2. **Credentials** 클릭
+3. **Stores scoped to Jenkins** 영역의 **System** 클릭
+4. **Global credentials (unrestricted)** 클릭
+5. 우측 상단 **+ Add Credentials** 클릭
+6. 폼 입력:
+   - **Kind**: `Username with password`
+   - **Username**: `[본인의 GitHub 사용자명]` (예: `jinbdsai`)
+   - **Password**: `[12-5에서 복사한 GitHub PAT 붙여넣기]`
+   - **ID**: `github-https`
+   - **Description**: `GitHub HTTPS auth (PAT)`
+7. 하단 **Create** 버튼 클릭
+
+> 💡 이 한 개의 credential로:
+> - **저장소 클론 (12-8)** — Pipeline Job 설정에서 `github-https` 선택
+> - **API 호출 (12-7)** — Jenkinsfile에서 `credentials('github-https')` 로 환경변수 주입
+
+> 💡 **다른 비밀(DB 비밀번호, API 키 등)은 어디에?**
+> - 앱이 직접 쓰는 비밀 → 프로젝트 루트의 `.env` 파일 (반드시 `.gitignore`에 포함!)
+> - 협업용 공유 비밀 → Vault, AWS Secrets Manager 등 (실무에서)
+>
+> **공통 원칙: 비밀은 절대 git에 올리지 않는다.** 실수로 push했다면 즉시 GitHub에서 해당 토큰을 revoke(폐기)하고 새로 발급받으세요.
+
+- [ ] Jenkins Credentials Store에 `github-https` 등록 완료
+
+### 12-7. Jenkinsfile 작성
+
+프로젝트 루트에 파이프라인 정의 파일 만들기. (VSCode 파일 탐색기에서 `~/project/` 우클릭 → New File → `Jenkinsfile` 로 만들어도 됩니다.)
 
 ```bash
 nano ~/project/Jenkinsfile
 ```
 
-내용:
+아래 내용 전체를 그대로 붙여넣기:
+
 ```groovy
 pipeline {
     agent any
 
+    // 12-6에서 등록한 GitHub credentials를 환경변수로 주입.
+    // 'Username with password' 형식이면 자동으로 두 변수가 만들어짐:
+    //   GITHUB_AUTH      → 'username:token' 합본
+    //   GITHUB_AUTH_USR  → username
+    //   GITHUB_AUTH_PSW  → token (API 호출에 사용)
+    // 로그에는 자동으로 ****로 마스킹됨.
+    environment {
+        GITHUB_AUTH = credentials('github-https')
+    }
+
     stages {
+        // ① GitHub API 접근이 잘 되는지 토큰 검증 (선택, 디버깅용)
+        stage('Verify GitHub Token') {
+            steps {
+                sh 'curl -s -H "Authorization: token $GITHUB_AUTH_PSW" https://api.github.com/user | head -5'
+            }
+        }
+
+        // ② 저장소에서 최신 코드 받아오기 (Job 설정의 SCM 정보를 사용)
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
+
+        // ③ 빌드 + 컨테이너 재시작
         stage('Build & Deploy') {
             steps {
                 sh 'docker compose down || true'
                 sh 'docker compose up -d --build'
             }
         }
+
+        // ④ 헬스 체크
         stage('Health Check') {
             steps {
                 sh 'sleep 20'
@@ -1020,6 +1087,7 @@ pipeline {
             }
         }
     }
+
     post {
         success {
             echo '✅ 배포 성공!'
@@ -1031,6 +1099,12 @@ pipeline {
 }
 ```
 
+> ⚠️ **자주 하는 실수: `stages` 블록은 반드시 하나!**
+> Declarative Pipeline은 `stages { ... }` 블록을 **딱 1개만** 가질 수 있습니다. 여러 `stage` 는 모두 하나의 `stages` 블록 안에 모아 넣으세요. 두 개로 나뉘어 있으면 문법 에러로 빌드 자체가 안 됩니다.
+
+> 💡 **`Verify GitHub Token` 스테이지가 필요 없다면?**
+> 단순 배포만 한다면 `environment {}` 블록과 `Verify GitHub Token` 스테이지는 생략 가능합니다. 단, 이후 PR 코멘트 자동 작성, 빌드 상태 GitHub에 표시 등 GitHub API를 호출할 일이 생기면 미리 넣어두는 게 편합니다.
+
 커밋 & push:
 ```bash
 cd ~/project
@@ -1039,28 +1113,38 @@ git commit -m "Add Jenkinsfile"
 git push
 ```
 
-### 12-7. Jenkins에 파이프라인 Job 생성
+- [ ] Jenkinsfile 작성 및 GitHub push 완료
 
-1. Jenkins 메인 화면 → **New Item**
-2. 이름: `project-pipeline`, **Pipeline** 선택 → **OK**
-3. **Pipeline** 섹션에서:
-   - **Definition**: `Pipeline script from SCM`
-   - **SCM**: `Git`
-   - **Repository URL**: `git@github.com:사용자명/project.git`
-   - **Credentials**: **Add** → **Jenkins** → Kind: `SSH Username with private key`
-     - Username: `git`
-     - Private Key: **Enter directly** → 서버에서 `cat ~/.ssh/id_ed25519` 내용을 복사 붙여넣기 (또는 별도 Jenkins용 SSH 키 생성 권장)
+### 12-8. Jenkins에 파이프라인 Job 생성
+
+1. Jenkins 메인 화면 → **New Item** (또는 우측 상단 + 버튼)
+2. **이름**: `project-pipeline` 입력 → **Pipeline** 선택 → **OK**
+3. 설정 페이지에서 아래로 스크롤하여 **Pipeline** 섹션 찾기:
+   - **Definition**: `Pipeline script from SCM` 선택
+   - **SCM**: `Git` 선택
+   - **Repository URL**: `https://github.com/사용자명/저장소명.git`
+     - ⚠️ 반드시 **HTTPS URL** 사용 (예: `https://github.com/jinbdsai/SpringBoot-React.git`)
+     - GitHub 저장소 페이지 → 초록색 **Code** 버튼 → **HTTPS** 탭에서 복사 가능
+   - **Credentials**: 드롭다운에서 **12-6에서 등록한 `github-https`** 선택
    - **Branch**: `*/main`
    - **Script Path**: `Jenkinsfile`
-4. **Save**
+4. 하단 **Save** 클릭
 
-### 12-8. 수동 빌드 실행
+> ✅ **Save 직후 에러 메시지가 사라졌으면** Jenkins가 GitHub에 정상 접근 가능한 상태입니다.
+>
+> ❌ `Failed to connect to repository` 또는 `Authentication failed` 가 뜨면:
+> - URL이 `https://` 로 시작하는지 확인 (SSH 형식 `git@github.com:...` 이면 안 됨)
+> - Credentials의 username이 본인 GitHub 사용자명인지 확인
+> - PAT의 `repo` scope 가 체크돼 있는지 확인
+> - PAT 만료/폐기 여부 확인 — 의심되면 12-5부터 새 토큰 발급 후 12-6 재등록
 
-좌측 **Build Now** 클릭 → 파이프라인이 돌면서 모든 단계가 초록색이면 성공.
+### 12-9. 수동 빌드 실행
+
+좌측 메뉴의 **Build Now** 클릭 → 파이프라인이 돌면서 모든 스테이지가 초록색이면 성공.
 
 - [ ] Jenkins 파이프라인 빌드 성공
 
-### 12-9. (선택) GitHub Webhook 자동 트리거 연결
+### 12-10. (선택) GitHub Webhook 자동 트리거 연결
 
 push할 때마다 자동으로 Jenkins가 빌드하게 하려면:
 
