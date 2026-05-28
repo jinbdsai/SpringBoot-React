@@ -6,51 +6,116 @@
 
 ---
 
-## 📐 전체 아키텍처 다이어그램
+## 🛠️ 기술 스택 한눈에 보기
+
+| 영역 | 기술 |
+|------|------|
+| **Backend** | Spring Boot 3.x+, Java 17, JPA (Hibernate), Spring Data Redis |
+| **Frontend** | React 18, Vite, Nginx (배포) |
+| **Database** | MySQL 8.0 |
+| **Cache** | Redis 7 |
+| **CI/CD** | Jenkins (LTS) |
+| **Infra** | Docker, Docker Compose |
+| **VCS** | Git, GitHub |
+| **OS** | Ubuntu 26.04 LTS (원격 SSH 서버) |
+
+---
+
+## 📐 전체 시스템 한 장 요약
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        내 로컬 컴퓨터                              │
-│   ┌─────────────┐                                                 │
-│   │  VSCode     │  ──── SSH ────►  원격 서버 접속                  │
-│   └─────────────┘                                                 │
-└──────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                  원격 SSH 서버 (Ubuntu 26.04)                      │
-│                                                                    │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │                       Docker 컨테이너                        │  │
-│  │                                                              │  │
-│  │  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐ │  │
-│  │  │ React    │──►│ Spring   │──►│ MySQL    │   │ Redis    │ │  │
-│  │  │ (3000)   │   │ Boot     │   │ (3306)   │   │ (6379)   │ │  │
-│  │  │ Nginx    │   │ (8080)   │   │          │   │          │ │  │
-│  │  └──────────┘   └──────────┘   └──────────┘   └──────────┘ │  │
-│  │                       ▲                                      │  │
-│  │                       │                                      │  │
-│  │                  ┌──────────┐                                │  │
-│  │                  │ Jenkins  │  ◄── Git Push 트리거            │  │
-│  │                  │ (8081)   │                                │  │
-│  │                  └──────────┘                                │  │
-│  └────────────────────────────────────────────────────────────┘  │
-│                              ▲                                     │
-└──────────────────────────────│─────────────────────────────────────┘
-                               │
-                               │ git push
-                               │
-                    ┌──────────────────────┐
-                    │   개인 GitHub        │
-                    │   (소스 코드 저장소)  │
-                    └──────────────────────┘
+┌─── 로컬 개발 환경 ───┐         ┌─────────── 원격 서버 (Ubuntu) ──────────┐
+│                      │         │                                          │
+│   VSCode             │  SSH    │  ┌──────────── Docker 데몬 ─────────┐   │
+│  (Remote-SSH)  ──────┼─────────┼─►│                                   │   │
+│                      │         │  │  ┌── 앱 스택 (Jenkins가 관리) ──┐ │   │
+└──────────────────────┘         │  │  │  Nginx ──► Spring ──► MySQL │ │   │
+                                  │  │  │              │     ──► Redis│ │   │
+                                  │  │  └──────────────┼───────────────┘ │   │
+                                  │  │                 ▲                  │   │
+                                  │  │                 │ docker compose   │   │
+                                  │  │  ┌─── 단독 컨테이너 ────┐         │   │
+                                  │  │  │  Jenkins (8081)      │         │   │
+                                  │  │  └──────────────────────┘         │   │
+                                  │  └────────────────────────────────────┘   │
+                                  │                 ▲                          │
+                                  └─────────────────┼──────────────────────────┘
+                                                    │ webhook (선택)
+                                  ┌─────────────────┴───────┐
+                                  │     GitHub 저장소         │
+                                  └──────────────────────────┘
+                                          ▲
+                                          │ git push
+                                  ┌───────┴────────┐
+                                  │    개발자       │
+                                  └────────────────┘
 ```
 
 ### 데이터 흐름 한눈에 보기
+
+```
+                 [브라우저 사용자]
+                        │
+                        │ HTTP
+                        ▼
+              ┌─────────────────┐
+              │   frontend      │  (Nginx, port 80)
+              │ React 정적 파일  │
+              └─────────────────┘
+                        │
+                        │ /api/* 요청
+                        ▼
+              ┌─────────────────┐
+              │    backend      │  (Spring Boot, port 8080)
+              │  비즈니스 로직   │
+              └─────────────────┘
+                  │         │
+            JPA  │         │ Spring Data Redis
+                  ▼         ▼
+       ┌──────────────┐  ┌──────────────┐
+       │     mysql    │  │     redis    │
+       │  영구 저장    │  │  캐시/세션    │
+       └──────────────┘  └──────────────┘
+```
+
+### CI/CD 흐름 (배포 자동화)
+
+```
+   [개발자]
+      │
+      │ ① 코드 수정 + git push
+      ▼
+┌──────────────┐
+│   GitHub     │
+└──────────────┘
+      │
+      │ ② (선택) webhook 알림
+      ▼
+┌──────────────┐         ③ Jenkinsfile 실행
+│   jenkins    │ ────────────────────────┐
+│  (port 8081) │                          │
+└──────────────┘                          │
+      │                                   │
+      │ ④ /var/run/docker.sock 통해       │
+      │   호스트 Docker 조종              │
+      ▼                                   ▼
+┌─────────────────────────────────────────────┐
+│  ⑤ docker compose down                       │
+│  ⑥ docker compose up -d --build              │
+│     → frontend, backend 이미지 재빌드        │
+│     → 모든 컨테이너 재시작                    │
+└─────────────────────────────────────────────┘
+      │
+      ▼
+   [새 버전 배포 완료]
+```
+
+### 한 줄 요약
 1. **개발자** → 코드를 작성하고 **GitHub**에 push
-2. **GitHub** → Jenkins에게 "코드 바뀌었어!" 알림(webhook)
-3. **Jenkins** → 코드를 가져와 빌드 → Docker 이미지 생성 → 컨테이너 재시작
-4. **사용자** → 브라우저로 **React**(프론트) 접속 → **Spring Boot**(백엔드) API 호출 → **MySQL**(데이터 저장) / **Redis**(캐시) 활용
+2. **Jenkins** → 코드를 가져와 빌드 → Docker 이미지 생성 → 컨테이너 재시작
+3. **사용자** → 브라우저로 **React**(프론트) 접속 → **Spring Boot**(백엔드) API 호출 → **MySQL**(저장) / **Redis**(캐시) 활용
+
+> 💡 **모든 서비스는 Docker 컨테이너로 동작**합니다 (Jenkins 포함). 단 **Jenkins는 단독 `docker run` 으로** 실행하고 (배포할 때마다 Jenkins 자기 자신이 죽으면 안 되니까), **앱 스택(frontend/backend/mysql/redis)만 Jenkins가 docker compose 로 관리**합니다. Jenkins가 호스트 Docker 데몬을 조종할 수 있는 비결은 `-v /var/run/docker.sock:/var/run/docker.sock` 마운트입니다.
 
 ---
 
@@ -63,15 +128,15 @@
 - [x] **2단계** — Git 설치 및 GitHub 계정/저장소 만들기
 - [x] **3단계** — Java(JDK) 17 설치
 - [x] **4단계** — Node.js & npm 설치 (React용)
-- [ ] **5단계** — Docker 설치
-- [ ] **6단계** — MySQL 설치 (Docker로)
-- [ ] **7단계** — Redis 설치 (Docker로)
-- [ ] **8단계** — Spring Boot 프로젝트 만들기
-- [ ] **9단계** — React 프로젝트 만들기
-- [ ] **10단계** — GitHub에 프로젝트 push
-- [ ] **11단계** — Docker로 Spring + React 빌드
-- [ ] **12단계** — Jenkins 설치 및 CI/CD 파이프라인 구축
-- [ ] **13단계** — 배포 및 확인
+- [x] **5단계** — Docker 설치
+- [x] **6단계** — MySQL 설치 (Docker로)
+- [x] **7단계** — Redis 설치 (Docker로)
+- [x] **8단계** — Spring Boot 프로젝트 만들기
+- [x] **9단계** — React 프로젝트 만들기
+- [x] **10단계** — GitHub에 프로젝트 push
+- [x] **11단계** — Docker로 Spring + React 빌드
+- [x] **12단계** — Jenkins 설치 및 CI/CD 파이프라인 구축
+- [x] **13단계** — 배포 및 확인
 
 ---
 
@@ -612,6 +677,7 @@ nano ~/project/backend/src/main/resources/application.properties
 아래 내용 붙여넣기:
 ```properties
 server.port=8080
+spring.application.name=backend
 
 # MySQL
 spring.datasource.url=jdbc:mysql://localhost:3306/toydb?useSSL=false&serverTimezone=Asia/Seoul
@@ -622,6 +688,7 @@ spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
 # JPA
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect
 
 # Redis
 spring.data.redis.host=localhost
@@ -630,8 +697,13 @@ spring.data.redis.port=6379
 
 저장: `Ctrl+O` → Enter → `Ctrl+X`
 
-> ⚠️ **dialect 설정을 명시하지 않는 이유**
-> Hibernate 6.x (Spring Boot 3.x 기본)부터는 `MySQL8Dialect` 클래스가 제거되고 `MySQLDialect`로 통합되었습니다. 그리고 **JDBC URL을 보고 Hibernate가 자동으로 적절한 dialect를 선택**하므로 굳이 명시하지 않는 게 안전합니다. 굳이 적고 싶다면 `org.hibernate.dialect.MySQLDialect` 를 사용하세요.
+> ⚠️ **`hibernate.dialect` 는 반드시 명시하세요.**
+> Hibernate 6 까지는 JDBC 메타데이터로 자동 감지가 잘 됐지만, **Hibernate 7 (Spring Boot 4.x 기본) 부터는 startup 시점에 DB 연결이 안 되면 자동 감지 자체가 실패해서 앱이 죽습니다.** 명시적으로 `MySQLDialect` 를 적어두면 연결이 잠시 늦어져도 안전합니다.
+>
+> `MySQL8Dialect` 는 Hibernate 6 부터 제거된 옛 이름이니 절대 쓰지 말고 **`MySQLDialect`** 를 쓰세요.
+
+> 💡 **`localhost` 가 docker-compose에선 통하지 않는 이유**
+> 8단계에서 Spring Boot를 호스트에서 직접 실행할 땐 `localhost:3306` 으로 MySQL에 접근됩니다 (호스트 포트 매핑 덕분). 하지만 11단계에서 backend 도 컨테이너 안으로 들어가면, 그 컨테이너의 `localhost` 는 자기 자신을 가리키므로 MySQL을 못 찾습니다. 그래서 11단계의 docker-compose.yml에선 **`SPRING_DATASOURCE_URL` 환경변수로 `jdbc:mysql://mysql:3306/...` 으로 덮어쓰기** 를 합니다 (`mysql` 은 compose의 서비스명, 컨테이너 간 DNS로 자동 해석됨).
 
 ### 8-5. 빌드 전 사전 확인
 
@@ -676,7 +748,8 @@ file:///home/jk/project/backend/build/reports/tests/test/index.html
 
 | 에러 키워드 | 원인 | 해결 |
 |------------|------|------|
-| `ClassNotFoundException ... Dialect` | Hibernate 6에서 사라진 dialect 명시 | `application.properties`에서 `hibernate.dialect=...MySQL8Dialect` 줄 삭제 |
+| `ClassNotFoundException ... MySQL8Dialect` | Hibernate 6+ 에서 제거된 클래스 이름 사용 | `MySQL8Dialect` → `MySQLDialect` 로 변경 |
+| `Unable to determine Dialect without JDBC metadata` | Hibernate 7+ 에서 DB 연결 실패 시 자동 감지 불가 | `hibernate.dialect=org.hibernate.dialect.MySQLDialect` 명시 + MySQL 컨테이너 떠있는지 확인 |
 | `Communications link failure` | MySQL 컨테이너가 안 떠 있음 | `docker ps` 확인 후 `docker start toy-mysql` |
 | `Unable to connect to Redis` | Redis 컨테이너가 안 떠 있음 | `docker start toy-redis` |
 | `Access denied for user` | 비밀번호/계정 불일치 | `application.properties`의 username/password 재확인 |
@@ -793,11 +866,88 @@ git push -u origin main
 
 GitHub 저장소 페이지 새로고침 → 파일들이 올라가 있으면 성공.
 
+#### 🚨 자주 만나는 git 에러
+
+| 에러 메시지 | 원인 | 해결 |
+|------------|------|------|
+| `remote origin already exists` | URL을 잘못 입력해서 다시 추가 시도 | `git remote set-url origin <올바른URL>` 로 URL만 변경 |
+| `! [rejected] ... (fetch first)` | 원격에 로컬에 없는 커밋이 있음 (예: GitHub 웹에서 README 추가) | `git pull --rebase origin main` 으로 원격 변경을 가져와 합친 뒤 다시 `git push` |
+| `cannot pull with rebase: You have unstaged changes` | 커밋되지 않은 변경사항이 있어서 rebase 못 함 | `git add . && git commit -m "메시지"` 로 먼저 커밋 후 rebase |
+| `CONFLICT (modify/delete)` 등 충돌 | 같은 파일을 양쪽에서 다르게 수정 | 충돌 파일 열어 `<<<<<<<` 마커 정리 → `git add 파일명` → `git rebase --continue` |
+| `Host key verification failed` | SSH 호스트 키 확인 안 됨 | `ssh -T git@github.com` 한 번 실행 후 `yes` 입력 |
+| `Authentication failed` (HTTPS) | PAT 만료/오타 | PAT 재발급 후 credential 재등록 |
+
+> 💡 **막다른 상황에서 rebase 취소하는 법**
+> ```bash
+> git rebase --abort
+> ```
+> rebase 시작 전 상태로 완전 복귀합니다. 안전합니다.
+
 - [ ] GitHub에 최초 push 완료
 
 ---
 
 ## 1️⃣1️⃣ Docker로 Spring + React 빌드
+
+> 📚 **이 단계를 시작하기 전에 알아둘 개념들**
+
+### Docker Compose가 뭐냐
+**한 줄: 여러 docker container를 한꺼번에 관리하는 도구.**
+
+비교해보면:
+```bash
+# Compose 없을 때 — 컨테이너마다 docker run 따로
+docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=... mysql:8.0
+docker run -d --name redis -p 6379:6379 redis:7-alpine
+docker run -d --name backend -p 8080:8080 ...
+docker run -d --name frontend -p 80:80 ...
+# → 명령어 4개, 옵션 길고, 의존성/네트워크 직접 챙겨야 함
+
+# Compose 있을 때 — yaml 한 파일 + 명령 하나
+docker compose up -d
+# → docker-compose.yml에 미리 적어두면 한 방에 다 띄움
+```
+
+11-3에서 작성하는 `docker-compose.yml` 이 바로 그 "yaml 한 파일" 입니다.
+
+### "앱 스택"이라는 표현 = container가 아닌 게 아님
+이 가이드에서 자주 쓰는 "앱 스택" 이라는 표현은 **frontend, backend, mysql, redis 4개의 docker container를 compose로 묶어서 한꺼번에 관리하는 묶음** 을 의미합니다. 전부 docker container가 맞고, 단지 **관리 방식**이 다를 뿐입니다:
+
+```
+호스트 docker
+│
+├─ 컨테이너: frontend  ┐
+├─ 컨테이너: backend   ├─ 4개를 묶어서 "앱 스택"이라 부름
+├─ 컨테이너: mysql     │  (compose가 한꺼번에 관리)
+├─ 컨테이너: redis     ┘
+│
+└─ 컨테이너: jenkins   ← 단독 docker run, 따로 관리
+```
+
+**왜 Jenkins만 따로?** Jenkins가 compose down 명령을 실행할 때 자기 자신까지 죽으면 빌드가 끊깁니다. 그래서 **앱 스택(compose)** 과 **Jenkins(단독)** 의 생명주기를 분리합니다.
+
+### `up` / `down` / `stop` / `start` 차이
+
+| 명령 | 동작 |
+|------|------|
+| `docker compose up -d` | yaml에 정의된 모든 컨테이너를 **생성 + 실행** (`-d` 는 백그라운드) |
+| `docker compose down` | 실행 중인 컨테이너를 **중지 + 삭제** (네트워크도 제거, 볼륨은 유지) |
+| `docker compose stop` | **중지만** (컨테이너는 남아있음) |
+| `docker compose start` | 중지된 컨테이너 **재시작** (새로 만들지 않음) |
+| `docker compose restart` | 중지 → 시작 한 번에 |
+
+**`up` vs `start` 차이:**
+- `up` → 컨테이너가 없으면 만들고, 있으면 실행 (생성 포함)
+- `start` → 이미 존재하는 컨테이너만 다시 켬 (없으면 에러)
+
+**Jenkinsfile에서 쓰는 배포 패턴:**
+```bash
+docker compose down              # 기존 거 다 내리고 삭제
+docker compose up -d --build     # 이미지 재빌드해서 다시 띄움
+```
+→ 배포할 때마다 **싹 갈아끼우는** 방식. 볼륨에 저장된 데이터는 안 날아가니 DB 내용은 보존됩니다.
+
+---
 
 ### 11-1. Backend Dockerfile 작성
 
@@ -857,7 +1007,6 @@ nano ~/project/docker-compose.yml
 services:
   mysql:
     image: mysql:8.0
-    container_name: toy-mysql
     environment:
       MYSQL_ROOT_PASSWORD: rootpass1234
       MYSQL_DATABASE: toydb
@@ -868,20 +1017,29 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "toyuser", "-ptoypass1234"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
-    container_name: toy-redis
     command: redis-server --appendonly yes
     ports:
       - "6379:6379"
     volumes:
       - redis-data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   backend:
     build: ./backend
-    container_name: toy-backend
     ports:
       - "8080:8080"
     environment:
@@ -891,13 +1049,14 @@ services:
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
     build: ./frontend
-    container_name: toy-frontend
     ports:
       - "80:80"
     depends_on:
@@ -909,12 +1068,21 @@ volumes:
   redis-data:
 ```
 
+> ⚠️ **`container_name:` 을 의도적으로 넣지 않습니다.**
+> compose는 실행 디렉토리 이름을 프로젝트명으로 삼아 `[디렉토리명]-[서비스명]-1` 형식의 이름을 자동 생성합니다. 만약 `container_name: toy-mysql` 같이 이름을 박아두면, 호스트(`~/project/`)와 Jenkins 워크스페이스(`/var/jenkins_home/workspace/project-pipeline/`) 처럼 **다른 디렉토리에서 같은 compose를 돌릴 때 이름 충돌**이 납니다. 자동 생성에 맡기면 디렉토리마다 이름이 분리돼서 안전합니다.
+
+> ⚠️ **`healthcheck` 와 `condition: service_healthy` 가 필수인 이유**
+> `depends_on: [mysql, redis]` 같은 **리스트 형식**은 "MySQL 컨테이너가 시작됐는지"만 보고 즉시 backend 를 시작합니다. 하지만 MySQL은 컨테이너가 떠도 실제로 쿼리를 받을 준비가 될 때까지 10~30초 더 걸립니다. 그 사이 Spring Boot 가 시작되면 **DB 연결 실패 → `Unable to determine Dialect` 에러로 backend 가 계속 죽고 재시작하는 무한 루프** 에 빠집니다.
+>
+> `healthcheck` 로 "진짜 준비됐는지" 검사하고, `depends_on` 을 **객체 형식**(`condition: service_healthy`)으로 바꿔서 **헬스체크 통과까지 backend 가 대기**하게 합니다.
+
 ### 11-4. 기존 단독 컨테이너 정리 후 통합 실행
 
+6/7단계에서 `docker run` 으로 직접 띄운 `toy-mysql`, `toy-redis` 컨테이너가 남아있으면 포트(3306, 6379) 충돌이 납니다. 먼저 정리:
+
 ```bash
-# 6,7단계에서 띄운 컨테이너 정리
-docker stop toy-mysql toy-redis 2>/dev/null
-docker rm toy-mysql toy-redis 2>/dev/null
+# 6,7단계에서 띄운 수동 컨테이너 정리
+docker rm -f toy-mysql toy-redis 2>/dev/null
 
 # 통합 실행
 cd ~/project
@@ -922,11 +1090,44 @@ docker compose up -d --build
 docker compose ps
 ```
 
-모든 서비스가 `Up` 상태로 보이면 성공.
+> 💡 데이터는 안 날아갑니다. `mysql-data`, `redis-data` 볼륨에 보관되어 있어서 compose가 다시 마운트해 가져옵니다.
+
+모든 서비스가 `Up` 상태로 보이면 성공 (mysql/redis는 `(healthy)` 표시까지 떠야 합니다).
 
 브라우저에서:
 - `http://서버IP/` → React 화면
 - `http://서버IP:8080/` → Spring Boot 응답 (Whitelabel Error Page도 OK, 동작은 한다는 뜻)
+
+### 📦 이 시점의 컨테이너 구조
+
+```
+┌─────────────── 호스트 서버 ───────────────┐
+│                                            │
+│  ┌──────── Docker 데몬 ────────────────┐  │
+│  │                                       │  │
+│  │  ┌─── 앱 스택 (docker compose) ───┐ │  │
+│  │  │                                  │ │  │
+│  │  │  ┌─────────┐  ┌─────────┐       │ │  │
+│  │  │  │frontend │  │ backend │       │ │  │
+│  │  │  │(Nginx)  │  │(Spring) │       │ │  │
+│  │  │  │ :80     │  │ :8080   │       │ │  │
+│  │  │  └─────────┘  └─────────┘       │ │  │
+│  │  │                                  │ │  │
+│  │  │  ┌─────────┐  ┌─────────┐       │ │  │
+│  │  │  │  mysql  │  │  redis  │       │ │  │
+│  │  │  │  :3306  │  │  :6379  │       │ │  │
+│  │  │  └─────────┘  └─────────┘       │ │  │
+│  │  └──────────────────────────────────┘ │  │
+│  │                                       │  │
+│  │  📦 Volumes:                          │  │
+│  │     • mysql-data    (DB 영속 저장)    │  │
+│  │     • redis-data    (Redis 영속 저장) │  │
+│  └───────────────────────────────────────┘  │
+└────────────────────────────────────────────┘
+```
+
+> 💡 **실제 컨테이너 이름은 `[프로젝트명]-[서비스명]-1`**
+> compose는 실행 디렉토리 이름을 프로젝트명으로 사용합니다. `~/project/` 에서 실행하면 `project-mysql-1`, `project-backend-1` 등이 됩니다. 위 그림은 가독성을 위해 서비스명만 적었습니다.
 
 - [ ] Docker Compose로 전체 스택 실행 확인
 
@@ -949,7 +1150,77 @@ docker run -d \
 
 > 💡 `/var/run/docker.sock` 마운트는 Jenkins 안에서 호스트 Docker를 쓰기 위함입니다.
 
-### 12-2. 초기 비밀번호 확인
+### 12-2. Jenkins 컨테이너 안에 Docker CLI 설치
+
+`jenkins/jenkins:lts` 이미지에는 **docker 명령어가 기본으로 없습니다.** docker.sock만 마운트해도 명령을 보낼 도구(CLI)가 없으면 빌드할 때 `docker: not found` 에러가 납니다. 따라서 컨테이너 안에 직접 설치해야 합니다.
+
+#### ① Docker CLI 설치
+
+```bash
+docker exec -u root toy-jenkins apt-get update
+docker exec -u root toy-jenkins apt-get install -y docker.io
+```
+
+#### ② Docker Compose plugin 설치
+
+`docker-compose-v2` 패키지는 Debian apt 저장소에 없어서 GitHub에서 바이너리로 직접 받습니다:
+
+```bash
+docker exec -u root toy-jenkins bash -c '
+  mkdir -p /usr/local/lib/docker/cli-plugins &&
+  curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+    -o /usr/local/lib/docker/cli-plugins/docker-compose &&
+  chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+'
+```
+
+#### ③ Docker Buildx plugin 설치
+
+`docker compose build` 는 내부적으로 buildx를 사용합니다. apt의 `docker.io`에 따라오는 buildx가 너무 오래되어 `compose build requires buildx 0.17.0 or later` 에러가 납니다. 최신 버전을 GitHub에서 직접 받습니다:
+
+```bash
+docker exec -u root toy-jenkins bash -c '
+  curl -SL https://github.com/docker/buildx/releases/download/v0.18.0/buildx-v0.18.0.linux-amd64 \
+    -o /usr/local/lib/docker/cli-plugins/docker-buildx &&
+  chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
+'
+```
+
+> 💡 위 URL의 `v0.18.0` 은 작성 시점 안정 버전입니다. 최신 버전을 쓰고 싶으면 https://github.com/docker/buildx/releases 에서 버전 확인 후 두 곳의 숫자를 모두 바꾸세요.
+
+#### ④ jenkins 사용자에게 docker.sock 접근 권한 부여
+
+호스트의 `docker.sock` 그룹 ID와 컨테이너 안 docker 그룹 ID를 맞추고, jenkins 사용자를 그룹에 추가:
+
+```bash
+docker exec -u root toy-jenkins bash -c '
+  SOCK_GID=$(stat -c "%g" /var/run/docker.sock)
+  groupadd -g $SOCK_GID docker 2>/dev/null || groupmod -g $SOCK_GID docker
+  usermod -aG docker jenkins
+'
+docker restart toy-jenkins
+```
+
+#### ⑤ 설치 확인
+
+```bash
+docker exec toy-jenkins docker --version
+docker exec toy-jenkins docker compose version
+docker exec toy-jenkins docker buildx version
+```
+
+3개 모두 버전 정보가 나오면 성공:
+```
+Docker version 26.x.x, build xxxxxxx
+Docker Compose version v2.x.x
+github.com/docker/buildx v0.18.0
+```
+
+> ⚠️ **이 작업은 컨테이너에 영구 저장됩니다.** 단, `docker rm toy-jenkins` 로 컨테이너를 완전 삭제하면 다시 설치해야 합니다. 더 영구적인 방법은 Custom Dockerfile로 docker CLI 포함한 Jenkins 이미지를 직접 만드는 것 (실무에서 권장).
+
+- [ ] Jenkins 컨테이너에 Docker CLI + Compose 설치 완료
+
+### 12-3. 초기 비밀번호 확인
 
 ```bash
 docker exec toy-jenkins cat /var/jenkins_home/secrets/initialAdminPassword
@@ -957,7 +1228,7 @@ docker exec toy-jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 
 출력된 비밀번호를 복사합니다.
 
-### 12-3. Jenkins 웹 UI 초기 설정
+### 12-4. Jenkins 웹 UI 초기 설정
 
 1. 브라우저에서 `http://서버IP:8081` 접속
 2. 복사한 비밀번호 입력
@@ -967,7 +1238,7 @@ docker exec toy-jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 
 - [ ] Jenkins 웹 UI 진입 완료
 
-### 12-4. Jenkins에서 사용할 도구 플러그인 확인
+### 12-5. Jenkins에서 사용할 도구 플러그인 확인
 
 좌측 **Manage Jenkins** → **Plugins** → **Available plugins**에서 검색 후 설치:
 - **Git** (보통 기본 설치됨)
@@ -975,7 +1246,7 @@ docker exec toy-jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 - **Docker Pipeline**
 - **Pipeline**
 
-### 12-5. GitHub Personal Access Token (PAT) 발급
+### 12-6. GitHub Personal Access Token (PAT) 발급
 
 Jenkins가 GitHub 저장소를 **HTTPS로 클론**하거나 **API 호출**할 때 사용할 인증 토큰을 만듭니다.
 
@@ -999,7 +1270,7 @@ Jenkins가 GitHub 저장소를 **HTTPS로 클론**하거나 **API 호출**할 �
 
 - [ ] PAT 발급 및 안전한 곳에 저장 완료
 
-### 12-6. Jenkins Credentials Store에 토큰 등록
+### 12-7. Jenkins Credentials Store에 토큰 등록
 
 > 💡 **왜 Credentials Store?** Jenkins가 비밀을 자동 암호화 저장 + 로그 마스킹까지 해줍니다. 절대 git이나 코드에 토큰을 직접 넣지 마세요.
 
@@ -1032,7 +1303,7 @@ Jenkins가 GitHub 저장소를 **HTTPS로 클론**하거나 **API 호출**할 �
 
 - [ ] Jenkins Credentials Store에 `github-https` 등록 완료
 
-### 12-7. Jenkinsfile 작성
+### 12-8. Jenkinsfile 작성
 
 프로젝트 루트에 파이프라인 정의 파일 만들기. (VSCode 파일 탐색기에서 `~/project/` 우클릭 → New File → `Jenkinsfile` 로 만들어도 됩니다.)
 
@@ -1115,7 +1386,7 @@ git push
 
 - [ ] Jenkinsfile 작성 및 GitHub push 완료
 
-### 12-8. Jenkins에 파이프라인 Job 생성
+### 12-9. Jenkins에 파이프라인 Job 생성
 
 1. Jenkins 메인 화면 → **New Item** (또는 우측 상단 + 버튼)
 2. **이름**: `project-pipeline` 입력 → **Pipeline** 선택 → **OK**
@@ -1138,13 +1409,13 @@ git push
 > - PAT의 `repo` scope 가 체크돼 있는지 확인
 > - PAT 만료/폐기 여부 확인 — 의심되면 12-5부터 새 토큰 발급 후 12-6 재등록
 
-### 12-9. 수동 빌드 실행
+### 12-10. 수동 빌드 실행
 
 좌측 메뉴의 **Build Now** 클릭 → 파이프라인이 돌면서 모든 스테이지가 초록색이면 성공.
 
 - [ ] Jenkins 파이프라인 빌드 성공
 
-### 12-10. (선택) GitHub Webhook 자동 트리거 연결
+### 12-11. (선택) GitHub Webhook 자동 트리거 연결
 
 push할 때마다 자동으로 Jenkins가 빌드하게 하려면:
 
@@ -1198,23 +1469,7 @@ docker compose up -d --build
 docker system prune -a
 ```
 
-### 13-3. 포트 정리
-
-| 서비스 | 포트 | URL |
-|---------|------|-----|
-| React (Nginx) | 80 | http://서버IP/ |
-| Spring Boot | 8080 | http://서버IP:8080/ |
-| Jenkins | 8081 | http://서버IP:8081/ |
-| MySQL | 3306 | (내부 접속) |
-| Redis | 6379 | (내부 접속) |
-
-> 💡 외부에서 접속 안 되면:
-> ```bash
-> sudo ufw allow 80
-> sudo ufw allow 8080
-> sudo ufw allow 8081
-> sudo ufw status
-> ```
+> 📋 **포트 정리 + 운영 명령어 전체 목록은 가이드 마지막의 [🚀 빠른 시작 명령어](#-빠른-시작-명령어-구축-완료-후-일상-운영용) 섹션에 따로 정리해뒀습니다.**
 
 ---
 
@@ -1229,22 +1484,111 @@ docker system prune -a
 ### Q3. React 빌드가 너무 느려요
 → `node_modules`이 docker volume에 마운트되지 않은지 확인. Dockerfile에서 `COPY` → `npm install` 순서가 맞아야 캐시됨.
 
-### Q4. Jenkins에서 `docker: command not found`
-→ Jenkins 컨테이너에 docker CLI가 없습니다. 아래로 해결:
-```bash
-docker exec -u root -it toy-jenkins bash
-apt-get update && apt-get install -y docker.io
-exit
-```
+### Q4. Jenkins 빌드에서 `docker: not found` / `compose build requires buildx 0.17.0 or later`
+→ **12-2 단계를 건너뛰었거나 불완전하게 한 경우**입니다. Jenkins 컨테이너에는 docker CLI / compose plugin / buildx plugin **3개를 모두** 설치해야 합니다. 12-2 단계의 ①~⑤를 처음부터 다시 수행하세요.
 
-### Q5. 포트가 이미 사용 중이라고 에러
+### Q5. Jenkins 빌드에서 `Failed to connect to repository ... Host key verification failed`
+→ Pipeline Job 설정에서 **SSH URL** (`git@github.com:...`)을 쓰면 발생합니다. **HTTPS URL** (`https://github.com/...`) 로 바꾸고 12-7 단계의 `github-https` credentials 를 선택하세요.
+
+### Q6. Jenkins 빌드에서 `Container name "/toy-mysql" is already in use`
+→ docker-compose.yml 에 `container_name: toy-xxx` 가 박혀있거나, 6/7 단계에서 만든 수동 컨테이너가 남아있어 발생합니다. 11-3 의 예시처럼 **`container_name:` 줄을 제거**하고, 기존 수동 컨테이너는 `docker rm -f toy-mysql toy-redis` 로 정리하세요.
+
+### Q7. backend 컨테이너가 무한 재시작 + `Unable to determine Dialect without JDBC metadata`
+→ Spring Boot 가 MySQL 보다 먼저 시작해서 발생합니다. 11-3 docker-compose.yml 의 `healthcheck` + `depends_on: { condition: service_healthy }` 가 제대로 들어갔는지 확인하고, application.properties 에 `hibernate.dialect=org.hibernate.dialect.MySQLDialect` 가 있는지 확인하세요.
+
+### Q8. 포트가 이미 사용 중이라고 에러
 ```bash
 sudo lsof -i :8080      # 어떤 프로세스가 점유 중인지 확인
 sudo kill -9 PID번호
 ```
 
-### Q6. `git push` 시 SSH 권한 거부
+### Q9. `git push` 시 SSH 권한 거부
 → `ssh -T git@github.com` 테스트부터. 안 되면 2-3단계 SSH 키 다시 확인.
+
+### Q10. `git push` 시 `! [rejected] ... (fetch first)`
+→ 원격에 로컬에 없는 커밋이 있습니다. 10-4 단계의 트러블슈팅 표 참고.
+
+---
+
+## 📁 최종 디렉토리 구조
+
+```
+~/project/                              ← 프로젝트 루트
+│
+├── 📄 SETUP_GUIDE.md                   ← 이 가이드
+├── 📄 docker-compose.yml               ← 전체 인프라 정의
+├── 📄 Jenkinsfile                      ← CI/CD 파이프라인 정의
+├── 📄 .gitignore                       ← Git 무시 규칙
+├── 📁 .git/                            ← Git 저장소
+│
+├── 📁 backend/                         ← Spring Boot
+│   ├── 📄 Dockerfile
+│   ├── 📄 build.gradle
+│   ├── 📄 settings.gradle
+│   ├── 📄 gradlew / gradlew.bat
+│   ├── 📁 gradle/wrapper/
+│   └── 📁 src/
+│       ├── 📁 main/
+│       │   ├── 📁 java/com/example/backend/
+│       │   │   └── 📄 BackendApplication.java
+│       │   └── 📁 resources/
+│       │       └── 📄 application.properties
+│       └── 📁 test/
+│           └── 📁 java/com/example/backend/
+│               └── 📄 BackendApplicationTests.java
+│
+└── 📁 frontend/                        ← React + Vite
+    ├── 📄 Dockerfile
+    ├── 📄 package.json
+    ├── 📄 vite.config.js
+    ├── 📄 index.html
+    ├── 📁 public/
+    └── 📁 src/
+        ├── 📄 main.jsx
+        ├── 📄 App.jsx
+        └── 📁 assets/
+```
+
+---
+
+## 🚀 빠른 시작 명령어 (구축 완료 후 일상 운영용)
+
+```bash
+# 전체 스택 실행 (호스트에서 수동으로 띄울 때)
+cd ~/project
+docker compose up -d --build
+
+# 상태 확인
+docker compose ps
+
+# 로그 모니터링
+docker compose logs -f
+docker compose logs -f backend       # 특정 서비스만
+
+# 재시작
+docker compose restart backend
+
+# 전체 종료
+docker compose down
+
+# 디스크 정리 (사용 안 하는 이미지 제거)
+docker system prune -a
+```
+
+### 접속 URL
+
+| 서비스 | 포트 | URL |
+|---------|------|-----|
+| React (Nginx) | 80 | `http://서버IP/` |
+| Spring Boot | 8080 | `http://서버IP:8080/` |
+| Jenkins | 8081 | `http://서버IP:8081/` |
+| MySQL | 3306 | (내부 접속) |
+| Redis | 6379 | (내부 접속) |
+
+> 💡 외부에서 접속 안 되면 방화벽 열기:
+> ```bash
+> sudo ufw allow 80 && sudo ufw allow 8080 && sudo ufw allow 8081
+> ```
 
 ---
 
