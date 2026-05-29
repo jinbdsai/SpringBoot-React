@@ -1,9 +1,14 @@
 import { useState } from 'react'
+import MarkdownEditor from './MarkdownEditor'
+import CategorySelector from './CategorySelector'
+import TagInput from './TagInput'
 
 export default function PostForm({ initial, currentUser, onSubmit, onCancel }) {
   const [form, setForm] = useState({
     title: initial?.title ?? '',
     content: initial?.content ?? '',
+    category: initial?.category ?? 'FREE',
+    tags: initial?.tags ?? [],
   })
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -11,14 +16,12 @@ export default function PostForm({ initial, currentUser, onSubmit, onCancel }) {
   const isEdit = Boolean(initial)
   const author = isEdit ? initial.author : currentUser?.username
 
-  const onChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value })
-  }
+  const setField = (k, v) => setForm({ ...form, [k]: v })
 
   const submit = async (e) => {
     e.preventDefault()
     if (!form.title.trim() || !form.content.trim()) {
-      setError('제목과 내용을 모두 입력해주세요.')
+      setError('제목과 내용을 입력해주세요.')
       return
     }
     setError('')
@@ -44,34 +47,39 @@ export default function PostForm({ initial, currentUser, onSubmit, onCancel }) {
       </div>
 
       <div className="post-form__field">
+        <label>카테고리</label>
+        <CategorySelector value={form.category} onChange={(v) => setField('category', v)} />
+      </div>
+
+      <div className="post-form__field">
         <label htmlFor="title">제목</label>
         <input
           id="title"
-          name="title"
           type="text"
-          placeholder="제목을 입력하세요"
+          placeholder="제목"
           value={form.title}
-          onChange={onChange}
+          onChange={(e) => setField('title', e.target.value)}
           maxLength={200}
         />
       </div>
 
       <div className="post-form__field">
-        <label htmlFor="content">내용</label>
-        <textarea
-          id="content"
-          name="content"
-          placeholder="내용을 입력하세요"
-          rows={12}
+        <label>태그</label>
+        <TagInput value={form.tags} onChange={(v) => setField('tags', v)} />
+      </div>
+
+      <div className="post-form__field">
+        <label htmlFor="content">내용 (마크다운)</label>
+        <MarkdownEditor
           value={form.content}
-          onChange={onChange}
+          onChange={(v) => setField('content', v)}
+          placeholder="마크다운으로 작성하세요. 이미지는 Ctrl+V 로 붙여넣을 수 있어요."
+          rows={14}
         />
       </div>
 
       <div className="post-form__actions">
-        <button type="button" className="btn" onClick={onCancel}>
-          취소
-        </button>
+        <button type="button" className="btn" onClick={onCancel}>취소</button>
         <button type="submit" className="btn btn--primary" disabled={submitting}>
           {submitting ? '저장 중...' : isEdit ? '수정 완료' : '등록'}
         </button>

@@ -21,13 +21,17 @@ public class PostController {
     }
 
     @GetMapping
-    public List<PostResponse> list() {
-        return postService.findAll();
+    public List<PostResponse> list(
+            @RequestParam(required = false) PostCategory category,
+            @RequestParam(required = false, defaultValue = "latest") String sort,
+            HttpSession session
+    ) {
+        return postService.findAll(category, sort, currentUsernameOrNull(session));
     }
 
     @GetMapping("/{id}")
-    public PostResponse detail(@PathVariable Long id) {
-        return postService.findOne(id);
+    public PostResponse detail(@PathVariable Long id, HttpSession session) {
+        return postService.findOne(id, currentUsernameOrNull(session));
     }
 
     @PostMapping
@@ -56,6 +60,11 @@ public class PostController {
             throw new UnauthorizedException("로그인이 필요합니다.");
         }
         return user;
+    }
+
+    private String currentUsernameOrNull(HttpSession session) {
+        SessionUser u = (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
+        return u == null ? null : u.getUsername();
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
