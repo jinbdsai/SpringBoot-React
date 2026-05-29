@@ -42,6 +42,8 @@ services:
       SPRING_DATASOURCE_PASSWORD: toypass1234
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
+    volumes:
+      - backend-uploads:/app/uploads
     depends_on:
       mysql:
         condition: service_healthy
@@ -60,3 +62,4 @@ services:
 volumes:
   mysql-data:
   redis-data:
+  backend-uploads:
