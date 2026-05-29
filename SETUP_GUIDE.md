@@ -1553,6 +1553,8 @@ sudo kill -9 PID번호
 
 ## 🚀 빠른 시작 명령어 (구축 완료 후 일상 운영용)
 
+### 운영 모드 (Jenkins가 띄운 도커 컨테이너)
+
 ```bash
 # 전체 스택 실행 (호스트에서 수동으로 띄울 때)
 cd ~/project
@@ -1575,20 +1577,97 @@ docker compose down
 docker system prune -a
 ```
 
+### 로컬 개발 모드 (코드 수정하면서 즉시 확인)
+
+```bash
+# 백엔드 (8090 포트, local 프로파일 자동 적용)
+cd ~/project/backend
+./gradlew bootRun
+
+# 프론트엔드 (5173 포트, vite dev 서버)
+cd ~/project/frontend
+npm run dev
+```
+
+> 💡 `application-local.properties` 가 server.port=8090 으로 설정되어 있고, build.gradle 의 `bootRun` 태스크에 `spring.profiles.active=local` 이 자동 주입됩니다. 그래서 운영(8080)과 충돌 없이 같이 띄울 수 있습니다.
+
+### 포트 정리 (로컬 + 도커 동시 운영)
+
+| 컴포넌트 | 실행 방식 | 호스트 포트 | 설정 위치 | 코드 상태 |
+|---|---|---|---|---|
+| **Local Backend** | `./gradlew bootRun` | **8090** | `application-local.properties` (build.gradle 이 local 프로파일 자동 적용) | 작업중인 새 코드 |
+| **Local Frontend** | `npm run dev` | **5173** | vite 기본값 | 작업중인 새 코드 |
+| **Docker Backend** | Jenkins `compose up --build` | **8080** | `application.properties` | 마지막으로 push 된 코드 |
+| **Docker Frontend** | Jenkins `compose up --build` | **80** | nginx (Dockerfile) | 마지막으로 push 된 코드 |
+| **MySQL** (공용) | docker-compose | **3306** | docker-compose.yml | - |
+| **Redis** (공용) | docker-compose | **6379** | docker-compose.yml | - |
+| **Jenkins UI** | 단독 `docker run` | **8081** | toy-jenkins 컨테이너 | - |
+
+### 흐름도
+
+```
+┌─── 로컬 개발 (실시간) ────────────────────────────┐
+│                                                    │
+│   브라우저  ──►  localhost:5173  (vite dev)        │
+│                       │                            │
+│                       │  proxy /api/*              │
+│                       ▼                            │
+│                  localhost:8090                    │
+│                  (./gradlew bootRun)               │
+│                       │                            │
+└───────────────────────┼────────────────────────────┘
+                        │
+                        ├─────► localhost:3306 (MySQL) ◄─┐
+                        │                                  │
+                        └─────► localhost:6379 (Redis) ◄─┐ │
+                                                          │ │
+┌─── 운영 (Jenkins 배포) ───────────────────────────┐    │ │
+│                                                    │    │ │
+│   브라우저  ──►  localhost:80  (nginx)             │    │ │
+│                       │                            │    │ │
+│                       │  /api/*                    │    │ │
+│                       ▼                            │    │ │
+│                  localhost:8080                    │    │ │
+│                  (Spring Boot, Tomcat)             │    │ │
+│                       │                            │    │ │
+└───────────────────────┼────────────────────────────┘    │ │
+                        │                                  │ │
+                        ├──────────────────────────────────┘ │
+                        └────────────────────────────────────┘
+
+┌─── CI/CD ─────────────────────────────────────────┐
+│                                                    │
+│   브라우저  ──►  localhost:8081  (Jenkins UI)      │
+│                                                    │
+└────────────────────────────────────────────────────┘
+```
+
+### 동시에 켤 수 있는 조합
+
+- ✅ 로컬(5173 + 8090) + 도커(80 + 8080) + Jenkins(8081) **다 동시에 켜져있어도 충돌 없음**
+- ✅ MySQL/Redis 는 공용 (양쪽이 같은 DB 사용 — 로컬에서 만든 데이터가 운영에도 그대로 보임)
+
 ### 접속 URL
 
-| 서비스 | 포트 | URL |
-|---------|------|-----|
-| React (Nginx) | 80 | `http://서버IP/` |
-| Spring Boot | 8080 | `http://서버IP:8080/` |
-| Jenkins | 8081 | `http://서버IP:8081/` |
-| MySQL | 3306 | (내부 접속) |
-| Redis | 6379 | (내부 접속) |
+| URL | 무엇을 보여줌? |
+|---|---|
+| `http://서버IP:5173` | 🛠️ 개발중인 새 코드 (로컬, push 전) |
+| `http://서버IP/` | 🚀 운영본 (마지막 push 상태, Jenkins 배포) |
+| `http://서버IP:8081` | 🔧 Jenkins 관리 UI |
+| `http://서버IP:8090/api/posts` | 로컬 백엔드 직접 호출 (디버깅용) |
+| `http://서버IP:8080/api/posts` | 도커 백엔드 직접 호출 (디버깅용) |
 
 > 💡 외부에서 접속 안 되면 방화벽 열기:
 > ```bash
-> sudo ufw allow 80 && sudo ufw allow 8080 && sudo ufw allow 8081
+> sudo ufw allow 80 && sudo ufw allow 5173 && sudo ufw allow 8080 && sudo ufw allow 8081 && sudo ufw allow 8090
 > ```
+
+### 일반적인 개발 흐름
+
+1. **로컬에서 개발/확인** (`./gradlew bootRun` + `npm run dev`) → `http://서버IP:5173`
+2. 잘 되면 → `git add . && git commit -m "..." && git push`
+3. **Jenkins UI(8081)** 에서 `Build Now` 클릭 (또는 webhook 자동)
+4. Jenkins 가 `project-pipeline-*` 컨테이너 재빌드 → `http://서버IP/` 운영 반영
 
 ---
 

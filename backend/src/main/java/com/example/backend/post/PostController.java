@@ -1,0 +1,75 @@
+package com.example.backend.post;
+
+import com.example.backend.auth.SessionUser;
+import com.example.backend.post.dto.PostRequest;
+import com.example.backend.post.dto.PostResponse;
+import jakarta.servlet.http.HttpSession;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.net.URI;
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/posts")
+public class PostController {
+
+    private final PostService postService;
+
+    public PostController(PostService postService) {
+        this.postService = postService;
+    }
+
+    @GetMapping
+    public List<PostResponse> list() {
+        return postService.findAll();
+    }
+
+    @GetMapping("/{id}")
+    public PostResponse detail(@PathVariable Long id) {
+        return postService.findOne(id);
+    }
+
+    @PostMapping
+    public ResponseEntity<PostResponse> create(@RequestBody PostRequest request, HttpSession session) {
+        SessionUser user = requireLogin(session);
+        PostResponse created = postService.create(user.getUsername(), request);
+        return ResponseEntity.created(URI.create("/api/posts/" + created.getId())).body(created);
+    }
+
+    @PutMapping("/{id}")
+    public PostResponse update(@PathVariable Long id, @RequestBody PostRequest request, HttpSession session) {
+        SessionUser user = requireLogin(session);
+        return postService.update(id, user.getUsername(), request);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id, HttpSession session) {
+        SessionUser user = requireLogin(session);
+        postService.delete(id, user.getUsername());
+        return ResponseEntity.noContent().build();
+    }
+
+    private SessionUser requireLogin(HttpSession session) {
+        SessionUser user = (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
+        if (user == null) {
+            throw new UnauthorizedException("로그인이 필요합니다.");
+        }
+        return user;
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<String> handleNotFound(IllegalArgumentException e) {
+        return ResponseEntity.status(404).body(e.getMessage());
+    }
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<String> handleUnauthorized(UnauthorizedException e) {
+        return ResponseEntity.status(401).body(e.getMessage());
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<String> handleForbidden(ForbiddenException e) {
+        return ResponseEntity.status(403).body(e.getMessage());
+    }
+}
