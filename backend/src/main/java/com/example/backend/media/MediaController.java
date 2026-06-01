@@ -85,14 +85,4 @@ public class MediaController {
             throw new SecurityException("로그인이 필요합니다.");
         }
     }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<String> bad(IllegalArgumentException e) {
-        return ResponseEntity.status(400).body(e.getMessage());
-    }
-
-    @ExceptionHandler(SecurityException.class)
-    public ResponseEntity<String> forbidden(SecurityException e) {
-        return ResponseEntity.status(403).body(e.getMessage());
-    }
 }

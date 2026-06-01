@@ -5,7 +5,6 @@ import com.example.backend.post.PostService;
 import com.example.backend.post.dto.PostResponse;
 import com.example.backend.user.dto.UserResponse;
 import jakarta.servlet.http.HttpSession;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -43,10 +42,5 @@ public class UserController {
     private String currentUsernameOrNull(HttpSession session) {
         SessionUser u = (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
         return u == null ? null : u.getUsername();
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<String> notFound(IllegalArgumentException e) {
-        return ResponseEntity.status(404).body(e.getMessage());
     }
 }

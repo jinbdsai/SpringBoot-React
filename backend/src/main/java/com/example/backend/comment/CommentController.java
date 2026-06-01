@@ -4,6 +4,7 @@ import com.example.backend.auth.SessionUser;
 import com.example.backend.comment.dto.CommentRequest;
 import com.example.backend.comment.dto.CommentResponse;
 import jakarta.servlet.http.HttpSession;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,13 +25,13 @@ public class CommentController {
     }
 
     @PostMapping("/api/posts/{postId}/comments")
-    public CommentResponse create(@PathVariable Long postId, @RequestBody CommentRequest request, HttpSession session) {
+    public CommentResponse create(@PathVariable Long postId, @Valid @RequestBody CommentRequest request, HttpSession session) {
         SessionUser user = requireLogin(session);
         return commentService.create(postId, user.getUsername(), request);
     }
 
     @PutMapping("/api/comments/{commentId}")
-    public CommentResponse update(@PathVariable Long commentId, @RequestBody CommentRequest request, HttpSession session) {
+    public CommentResponse update(@PathVariable Long commentId, @Valid @RequestBody CommentRequest request, HttpSession session) {
         SessionUser user = requireLogin(session);
         return commentService.update(commentId, user.getUsername(), request);
     }
@@ -46,15 +47,5 @@ public class CommentController {
         SessionUser u = (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
         if (u == null) throw new SecurityException("로그인이 필요합니다.");
         return u;
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<String> bad(IllegalArgumentException e) {
-        return ResponseEntity.status(400).body(e.getMessage());
-    }
-
-    @ExceptionHandler(SecurityException.class)
-    public ResponseEntity<String> forbidden(SecurityException e) {
-        return ResponseEntity.status(403).body(e.getMessage());
     }
 }

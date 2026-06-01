@@ -4,6 +4,7 @@ import com.example.backend.auth.SessionUser;
 import com.example.backend.post.dto.PostRequest;
 import com.example.backend.post.dto.PostResponse;
 import jakarta.servlet.http.HttpSession;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -35,14 +36,14 @@ public class PostController {
     }
 
     @PostMapping
-    public ResponseEntity<PostResponse> create(@RequestBody PostRequest request, HttpSession session) {
+    public ResponseEntity<PostResponse> create(@Valid @RequestBody PostRequest request, HttpSession session) {
         SessionUser user = requireLogin(session);
         PostResponse created = postService.create(user.getUsername(), request);
         return ResponseEntity.created(URI.create("/api/posts/" + created.getId())).body(created);
     }
 
     @PutMapping("/{id}")
-    public PostResponse update(@PathVariable Long id, @RequestBody PostRequest request, HttpSession session) {
+    public PostResponse update(@PathVariable Long id, @Valid @RequestBody PostRequest request, HttpSession session) {
         SessionUser user = requireLogin(session);
         return postService.update(id, user.getUsername(), request);
     }
@@ -65,20 +66,5 @@ public class PostController {
     private String currentUsernameOrNull(HttpSession session) {
         SessionUser u = (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
         return u == null ? null : u.getUsername();
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<String> handleNotFound(IllegalArgumentException e) {
-        return ResponseEntity.status(404).body(e.getMessage());
-    }
-
-    @ExceptionHandler(UnauthorizedException.class)
-    public ResponseEntity<String> handleUnauthorized(UnauthorizedException e) {
-        return ResponseEntity.status(401).body(e.getMessage());
-    }
-
-    @ExceptionHandler(ForbiddenException.class)
-    public ResponseEntity<String> handleForbidden(ForbiddenException e) {
-        return ResponseEntity.status(403).body(e.getMessage());
     }
 }

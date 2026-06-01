@@ -6,6 +6,7 @@ import com.example.backend.user.dto.LoginRequest;
 import com.example.backend.user.dto.RegisterRequest;
 import com.example.backend.user.dto.UserResponse;
 import jakarta.servlet.http.HttpSession;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,14 +21,14 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public UserResponse register(@RequestBody RegisterRequest request, HttpSession session) {
+    public UserResponse register(@Valid @RequestBody RegisterRequest request, HttpSession session) {
         User user = userService.register(request.getUsername(), request.getPassword());
         session.setAttribute(SessionUser.SESSION_KEY, SessionUser.from(user));
         return UserResponse.from(user);
     }
 
     @PostMapping("/login")
-    public UserResponse login(@RequestBody LoginRequest request, HttpSession session) {
+    public UserResponse login(@Valid @RequestBody LoginRequest request, HttpSession session) {
         User user = userService.authenticate(request.getUsername(), request.getPassword());
         session.setAttribute(SessionUser.SESSION_KEY, SessionUser.from(user));
         return UserResponse.from(user);
@@ -46,10 +47,5 @@ public class AuthController {
             return ResponseEntity.status(401).build();
         }
         return ResponseEntity.ok(new UserResponse(sessionUser.getId(), sessionUser.getUsername()));
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<String> handleBadRequest(IllegalArgumentException e) {
-        return ResponseEntity.status(400).body(e.getMessage());
     }
 }

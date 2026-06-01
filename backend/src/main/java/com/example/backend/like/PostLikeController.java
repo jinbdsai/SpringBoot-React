@@ -3,7 +3,6 @@ package com.example.backend.like;
 import com.example.backend.auth.SessionUser;
 import com.example.backend.like.dto.PostLikeResponseDTO;
 import jakarta.servlet.http.HttpSession;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -34,15 +33,5 @@ public class PostLikeController {
         SessionUser u = (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
         if (u == null) throw new SecurityException("로그인이 필요합니다.");
         return u;
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<String> bad(IllegalArgumentException e) {
-        return ResponseEntity.status(400).body(e.getMessage());
-    }
-
-    @ExceptionHandler(SecurityException.class)
-    public ResponseEntity<String> forbidden(SecurityException e) {
-        return ResponseEntity.status(403).body(e.getMessage());
     }
 }
