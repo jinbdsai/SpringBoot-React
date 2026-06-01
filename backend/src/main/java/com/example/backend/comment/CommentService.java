@@ -2,23 +2,30 @@ package com.example.backend.comment;
 
 import com.example.backend.comment.dto.CommentRequest;
 import com.example.backend.comment.dto.CommentResponse;
+import com.example.backend.notification.NotificationService;
 import com.example.backend.post.Post;
 import com.example.backend.post.PostRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @Transactional(readOnly = true)
 public class CommentService {
 
     private final CommentRepository commentRepository;
     private final PostRepository postRepository;
+    private final NotificationService notificationService;
 
-    public CommentService(CommentRepository commentRepository, PostRepository postRepository) {
+    public CommentService(CommentRepository commentRepository,
+                          PostRepository postRepository,
+                          NotificationService notificationService) {
         this.commentRepository = commentRepository;
         this.postRepository = postRepository;
+        this.notificationService = notificationService;
     }
 
     public List<CommentResponse> findByPost(Long postId) {
@@ -49,6 +56,9 @@ public class CommentService {
                 new Comment(postId, username, request.getContent().trim(), request.getParentId())
         );
         post.incrementCommentCount();
+        log.info("댓글 작성: id={}, postId={}, author={}, parentId={}",
+                saved.getId(), postId, username, request.getParentId());
+        notificationService.notifyComment(post.getAuthor(), username, postId, post.getTitle());
         return CommentResponse.from(saved);
     }
 
@@ -79,5 +89,6 @@ public class CommentService {
         c.softDelete();
         Post post = postRepository.findById(c.getPostId()).orElse(null);
         if (post != null) post.decrementCommentCount();
+        log.info("댓글 삭제(soft): id={}, author={}", commentId, username);
     }
 }

@@ -1,8 +1,10 @@
 package com.example.backend.user;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @Transactional(readOnly = true)
 public class UserService {
@@ -23,15 +25,22 @@ public class UserService {
             throw new IllegalArgumentException("이미 사용 중인 아이디입니다.");
         }
         User user = new User(username, passwordEncoder.encode(rawPassword));
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        log.info("회원가입 성공: username={}, id={}", saved.getUsername(), saved.getId());
+        return saved;
     }
 
     public User authenticate(String username, String rawPassword) {
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new IllegalArgumentException("아이디 또는 비밀번호가 올바르지 않습니다."));
+                .orElseThrow(() -> {
+                    log.warn("로그인 실패 (없는 아이디): username={}", username);
+                    return new IllegalArgumentException("아이디 또는 비밀번호가 올바르지 않습니다.");
+                });
         if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            log.warn("로그인 실패 (비밀번호 불일치): username={}", username);
             throw new IllegalArgumentException("아이디 또는 비밀번호가 올바르지 않습니다.");
         }
+        log.info("로그인 성공: username={}", username);
         return user;
     }
 

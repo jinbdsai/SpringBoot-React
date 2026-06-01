@@ -1,11 +1,13 @@
 services:
   mysql:
     image: mysql:8.0
+    command: --default-time-zone=+09:00
     environment:
       MYSQL_ROOT_PASSWORD: rootpass1234
       MYSQL_DATABASE: toydb
       MYSQL_USER: toyuser
       MYSQL_PASSWORD: toypass1234
+      TZ: Asia/Seoul
     ports:
       - "3306:3306"
     volumes:
@@ -21,6 +23,8 @@ services:
   redis:
     image: redis:7-alpine
     command: redis-server --appendonly yes
+    environment:
+      TZ: Asia/Seoul
     ports:
       - "6379:6379"
     volumes:
@@ -37,6 +41,7 @@ services:
     ports:
       - "8080:8080"
     environment:
+      TZ: Asia/Seoul
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/toydb?useSSL=false&serverTimezone=Asia/Seoul
       SPRING_DATASOURCE_USERNAME: toyuser
       SPRING_DATASOURCE_PASSWORD: toypass1234
@@ -53,6 +58,8 @@ services:
 
   frontend:
     build: ./frontend
+    environment:
+      TZ: Asia/Seoul
     ports:
       - "80:80"
     depends_on:

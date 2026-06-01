@@ -5,6 +5,7 @@ import com.example.backend.post.dto.PostRequest;
 import com.example.backend.post.dto.PostResponse;
 import com.example.backend.tag.Tag;
 import com.example.backend.tag.TagService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Set;
 
+@Slf4j
 @Service
 @Transactional(readOnly = true)
 public class PostService {
@@ -26,11 +28,16 @@ public class PostService {
         this.likeService = likeService;
     }
 
-    public List<PostResponse> findAll(PostCategory category, String sort, String currentUsername) {
+    public List<PostResponse> findAll(PostCategory category, String sort, String keyword, String currentUsername) {
         Sort s = resolveSort(sort);
-        List<Post> posts = (category == null)
-                ? postRepository.findAll(s)
-                : postRepository.findByCategory(category, s);
+        List<Post> posts;
+        if (keyword != null && !keyword.trim().isEmpty()) {
+            posts = postRepository.search(category, keyword.trim(), s);
+        } else if (category != null) {
+            posts = postRepository.findByCategory(category, s);
+        } else {
+            posts = postRepository.findAll(s);
+        }
         return posts.stream()
                 .map(p -> PostResponse.from(p, likeService.isLikedBy(p.getId(), currentUsername)))
                 .toList();
@@ -56,6 +63,7 @@ public class PostService {
         Set<Tag> tags = tagService.resolveOrCreate(request.getTags());
         post.replaceTags(tags);
         Post saved = postRepository.save(post);
+        log.info("게시글 생성: id={}, author={}, category={}", saved.getId(), author, request.getCategory());
         return PostResponse.from(saved, false);
     }
 
@@ -67,6 +75,7 @@ public class PostService {
         post.update(request.getTitle(), request.getContent(), request.getCategory());
         Set<Tag> tags = tagService.resolveOrCreate(request.getTags());
         post.replaceTags(tags);
+        log.info("게시글 수정: id={}, author={}", id, currentUsername);
         return PostResponse.from(post, likeService.isLikedBy(id, currentUsername));
     }
 
@@ -76,6 +85,7 @@ public class PostService {
                 .orElseThrow(() -> new IllegalArgumentException("Post not found: " + id));
         ensureOwner(post, currentUsername);
         postRepository.delete(post);
+        log.info("게시글 삭제: id={}, author={}", id, currentUsername);
     }
 
     private Sort resolveSort(String sort) {

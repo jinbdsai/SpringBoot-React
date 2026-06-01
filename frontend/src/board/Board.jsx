@@ -5,6 +5,7 @@ import PostList from './PostList'
 import PostDetail from './PostDetail'
 import PostForm from './PostForm'
 import ProfilePage from './ProfilePage'
+import NotificationBell from './NotificationBell'
 import LoginForm from '../auth/LoginForm'
 import RegisterForm from '../auth/RegisterForm'
 import './Board.css'
@@ -23,12 +24,13 @@ export default function Board() {
 
   const [category, setCategory] = useState(null)
   const [sort, setSort] = useState('latest')
+  const [searchKeyword, setSearchKeyword] = useState('')
 
   const loadPosts = async () => {
     setLoading(true)
     setError('')
     try {
-      const data = await postsApi.list({ category, sort })
+      const data = await postsApi.list({ category, sort, keyword: searchKeyword })
       setPosts(data)
     } catch (e) {
       setError(e.message)
@@ -53,7 +55,7 @@ export default function Board() {
   useEffect(() => {
     if (view === 'list') loadPosts()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, sort])
+  }, [category, sort, searchKeyword])
 
   const goList = async () => {
     setSelected(null); setEditing(null); setProfileUsername(null); setPendingAction(null)
@@ -128,6 +130,7 @@ export default function Board() {
             <div className="board-page__user">
               {currentUser ? (
                 <>
+                  <NotificationBell currentUser={currentUser} onSelectPost={goDetail} />
                   <button className="board-page__welcome-btn" onClick={() => goProfile(currentUser.username)}>
                     <strong>{currentUser.username}</strong>님
                   </button>
@@ -153,6 +156,8 @@ export default function Board() {
             onSelect={goDetail} onWrite={goWrite} onSelectAuthor={goProfile}
             category={category} setCategory={setCategory}
             sort={sort} setSort={setSort}
+            onSearch={setSearchKeyword}
+            searchActive={!!searchKeyword}
           />
         )}
         {view === 'detail' && (

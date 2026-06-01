@@ -17,10 +17,11 @@ const json = (method, body) => ({
 })
 
 export const postsApi = {
-  list: ({ category, sort } = {}) => {
+  list: ({ category, sort, keyword } = {}) => {
     const qs = new URLSearchParams()
     if (category) qs.set('category', category)
     if (sort) qs.set('sort', sort)
+    if (keyword) qs.set('keyword', keyword)
     const url = qs.toString() ? `${BASE}?${qs}` : BASE
     return fetch(url, { credentials: 'include' }).then(handle)
   },

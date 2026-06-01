@@ -25,9 +25,10 @@ public class PostController {
     public List<PostResponse> list(
             @RequestParam(required = false) PostCategory category,
             @RequestParam(required = false, defaultValue = "latest") String sort,
+            @RequestParam(required = false) String keyword,
             HttpSession session
     ) {
-        return postService.findAll(category, sort, currentUsernameOrNull(session));
+        return postService.findAll(category, sort, keyword, currentUsernameOrNull(session));
     }
 
     @GetMapping("/{id}")

@@ -13,6 +13,7 @@ const SORTS = [
 export default function PostList({
   posts, loading, onSelect, onWrite, onSelectAuthor,
   category, setCategory, sort, setSort,
+  onSearch, searchActive,
 }) {
   const [keyword, setKeyword] = useState('')
   const [field, setField] = useState('title')
@@ -75,10 +76,23 @@ export default function PostList({
           </select>
           <input
             type="text"
-            placeholder="검색"
+            placeholder="입력: 현재 목록 필터 / 엔터: 전체 검색"
             value={keyword}
             onChange={(e) => { setKeyword(e.target.value); setPage(1) }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onSearch?.(keyword.trim())
+            }}
           />
+          {searchActive && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => { setKeyword(''); onSearch?.('') }}
+              title="전체 검색 해제"
+            >
+              ✕
+            </button>
+          )}
         </div>
         <div className="post-list__sort">
           <select value={sort} onChange={(e) => setSort(e.target.value)}>
