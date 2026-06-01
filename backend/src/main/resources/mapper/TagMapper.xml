@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.backend.tag.dao.TagDao">
+
+    <resultMap id="tagResultMap" type="TagVO">
+        <id     property="id"   column="id"/>
+        <result property="name" column="name"/>
+    </resultMap>
+
+    <resultMap id="popularTagResultMap" type="PopularTagVO">
+        <result property="name"  column="name"/>
+        <result property="count" column="cnt"/>
+    </resultMap>
+
+    <select id="selectAllOrderByName" resultMap="tagResultMap">
+        SELECT id, name
+          FROM tags
+         ORDER BY name ASC
+    </select>
+
+    <select id="selectPopular" resultMap="popularTagResultMap">
+        SELECT t.name AS name,
+               COUNT(pt.post_id) AS cnt
+          FROM tags t
+          JOIN post_tags pt ON pt.tag_id = t.id
+         GROUP BY t.name
+         ORDER BY cnt DESC
+    </select>
+
+</mapper>

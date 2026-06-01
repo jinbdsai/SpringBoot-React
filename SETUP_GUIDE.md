@@ -21,101 +21,57 @@
 
 ---
 
-## 📐 전체 시스템 한 장 요약
+## 📐 전체 시스템 구조
 
 ```
-┌─── 로컬 개발 환경 ───┐         ┌─────────── 원격 서버 (Ubuntu) ──────────┐
-│                      │         │                                          │
-│   VSCode             │  SSH    │  ┌──────────── Docker 데몬 ─────────┐   │
-│  (Remote-SSH)  ──────┼─────────┼─►│                                   │   │
-│                      │         │  │  ┌── 앱 스택 (Jenkins가 관리) ──┐ │   │
-└──────────────────────┘         │  │  │  Nginx ──► Spring ──► MySQL │ │   │
-                                  │  │  │              │     ──► Redis│ │   │
-                                  │  │  └──────────────┼───────────────┘ │   │
-                                  │  │                 ▲                  │   │
-                                  │  │                 │ docker compose   │   │
-                                  │  │  ┌─── 단독 컨테이너 ────┐         │   │
-                                  │  │  │  Jenkins (8081)      │         │   │
-                                  │  │  └──────────────────────┘         │   │
-                                  │  └────────────────────────────────────┘   │
-                                  │                 ▲                          │
-                                  └─────────────────┼──────────────────────────┘
-                                                    │ webhook (선택)
-                                  ┌─────────────────┴───────┐
-                                  │     GitHub 저장소         │
-                                  └──────────────────────────┘
-                                          ▲
-                                          │ git push
-                                  ┌───────┴────────┐
-                                  │    개발자       │
-                                  └────────────────┘
+[개발자]                                              [사용자]
+   │                                                    │
+   │ git push                                           │ HTTP
+   ▼                                                    │
+[GitHub]                                                │
+   │                                                    │
+   │ Jenkins 가 git pull                                │
+   ▼                                                    │
+┌── Docker (Ubuntu 서버 안) ─────────────────────────────────┼─┐
+│                                                            │ │
+│   [Jenkins 컨테이너]                                       │ │
+│       │                                                    │ │
+│       │ docker compose build + up                          │ │
+│       │ (frontend, backend 컨테이너 새로 만들어 교체)      │ │
+│       ▼                                                    │ │
+│   [frontend 컨테이너 (nginx)] ◀── 사용자 HTTP 요청 ────────┘ │
+│       │                                                      │
+│       │ /api 프록시                                          │
+│       ▼                                                      │
+│   [backend 컨테이너 (Spring Boot)]                           │
+│       │                                                      │
+│       │ JPA · Redis · 파일 I/O                               │
+│   ┌───┴──────────────┬─────────────────────────┐             │
+│   ▼                  ▼                         ▼             │
+│ [mysql 컨테이너]  [redis 컨테이너]   /app/uploads (폴더)     │
+│   │                  │                         │             │
+│   ▼                  ▼                         ▼             │
+│  ═══════════════ 볼륨 (호스트 디스크) ═══════════════         │
+│   mysql-data    ·    redis-data    ·   backend-uploads      │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### 데이터 흐름 한눈에 보기
+---
 
-```
-                 [브라우저 사용자]
-                        │
-                        │ HTTP
-                        ▼
-              ┌─────────────────┐
-              │   frontend      │  (Nginx, port 80)
-              │ React 정적 파일  │
-              └─────────────────┘
-                        │
-                        │ /api/* 요청
-                        ▼
-              ┌─────────────────┐
-              │    backend      │  (Spring Boot, port 8080)
-              │  비즈니스 로직   │
-              └─────────────────┘
-                  │         │
-            JPA  │         │ Spring Data Redis
-                  ▼         ▼
-       ┌──────────────┐  ┌──────────────┐
-       │     mysql    │  │     redis    │
-       │  영구 저장    │  │  캐시/세션    │
-       └──────────────┘  └──────────────┘
-```
+## 🧩 Spring Boot 코드 구조
 
-### CI/CD 흐름 (배포 자동화)
+### 모듈별 계층 구조
 
-```
-   [개발자]
-      │
-      │ ① 코드 수정 + git push
-      ▼
-┌──────────────┐
-│   GitHub     │
-└──────────────┘
-      │
-      │ ② (선택) webhook 알림
-      ▼
-┌──────────────┐         ③ Jenkinsfile 실행
-│   jenkins    │ ────────────────────────┐
-│  (port 8081) │                          │
-└──────────────┘                          │
-      │                                   │
-      │ ④ /var/run/docker.sock 통해       │
-      │   호스트 Docker 조종              │
-      ▼                                   ▼
-┌─────────────────────────────────────────────┐
-│  ⑤ docker compose down                       │
-│  ⑥ docker compose up -d --build              │
-│     → frontend, backend 이미지 재빌드        │
-│     → 모든 컨테이너 재시작                    │
-└─────────────────────────────────────────────┘
-      │
-      ▼
-   [새 버전 배포 완료]
-```
+| 모듈 | Controller | Service | Repository / DAO | DTO / Entity | 스타일 |
+|---|---|---|---|---|---|
+| **post** | `PostController` | `PostService` | `PostRepository` (JPA) | `Post` + `PostRequest` / `PostResponse` | A. JPA 미니멀 |
+| **comment** | `CommentController` | `CommentService` | `CommentRepository` (JPA) | `Comment` + `CommentRequest` / `CommentResponse` | A. JPA 미니멀 |
+| **user** | `UserController` | `UserService` | `UserRepository` (JPA) | `User` + `LoginRequest` / `RegisterRequest` / `UserResponse` | A. JPA 미니멀 |
+| **tag** | `TagController` | `TagService` (interface) + `TagServiceImpl` | `TagDao` + `TagMapper.xml` **및** `TagRepository` (JPA) | `Tag` (Entity) + `TagVO` + `TagDTO` + `PopularTagVO` / `PopularTagResponseDTO` | A + B 혼합 |
+| **like** | `PostLikeController` | `PostLikeService` (interface) + `PostLikeServiceImpl` | `PostLikeDao` + `PostLikeMapper.xml` | `PostLikeVO` + `PostLikeDTO` + `PostLikeResponseDTO` | B. MyBatis (SI) |
+| **auth** | `AuthController` | (없음, 세션만 사용) | (없음) | `SessionUser` | — |
+| **media** | `MediaController` | `MediaStorageService` | (없음, 파일 시스템) | — | — |
 
-### 한 줄 요약
-1. **개발자** → 코드를 작성하고 **GitHub**에 push
-2. **Jenkins** → 코드를 가져와 빌드 → Docker 이미지 생성 → 컨테이너 재시작
-3. **사용자** → 브라우저로 **React**(프론트) 접속 → **Spring Boot**(백엔드) API 호출 → **MySQL**(저장) / **Redis**(캐시) 활용
-
-> 💡 **모든 서비스는 Docker 컨테이너로 동작**합니다 (Jenkins 포함). 단 **Jenkins는 단독 `docker run` 으로** 실행하고 (배포할 때마다 Jenkins 자기 자신이 죽으면 안 되니까), **앱 스택(frontend/backend/mysql/redis)만 Jenkins가 docker compose 로 관리**합니다. Jenkins가 호스트 Docker 데몬을 조종할 수 있는 비결은 `-v /var/run/docker.sock:/var/run/docker.sock` 마운트입니다.
 
 ---
 
@@ -1507,47 +1463,6 @@ sudo kill -9 PID번호
 
 ### Q10. `git push` 시 `! [rejected] ... (fetch first)`
 → 원격에 로컬에 없는 커밋이 있습니다. 10-4 단계의 트러블슈팅 표 참고.
-
----
-
-## 📁 최종 디렉토리 구조
-
-```
-~/project/                              ← 프로젝트 루트
-│
-├── 📄 SETUP_GUIDE.md                   ← 이 가이드
-├── 📄 docker-compose.yml               ← 전체 인프라 정의
-├── 📄 Jenkinsfile                      ← CI/CD 파이프라인 정의
-├── 📄 .gitignore                       ← Git 무시 규칙
-├── 📁 .git/                            ← Git 저장소
-│
-├── 📁 backend/                         ← Spring Boot
-│   ├── 📄 Dockerfile
-│   ├── 📄 build.gradle
-│   ├── 📄 settings.gradle
-│   ├── 📄 gradlew / gradlew.bat
-│   ├── 📁 gradle/wrapper/
-│   └── 📁 src/
-│       ├── 📁 main/
-│       │   ├── 📁 java/com/example/backend/
-│       │   │   └── 📄 BackendApplication.java
-│       │   └── 📁 resources/
-│       │       └── 📄 application.properties
-│       └── 📁 test/
-│           └── 📁 java/com/example/backend/
-│               └── 📄 BackendApplicationTests.java
-│
-└── 📁 frontend/                        ← React + Vite
-    ├── 📄 Dockerfile
-    ├── 📄 package.json
-    ├── 📄 vite.config.js
-    ├── 📄 index.html
-    ├── 📁 public/
-    └── 📁 src/
-        ├── 📄 main.jsx
-        ├── 📄 App.jsx
-        └── 📁 assets/
-```
 
 ---
 
